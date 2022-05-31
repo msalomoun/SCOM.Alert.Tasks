@@ -11,3 +11,7 @@ Many of my IT colleagues in our company use the SCOM console to work with alerts
 * **Get Effective Setting** - shows effective setting of individual targets for given monitor or rule
 
 * **Get Targets** - shows all targets for given monitor or rule
+
+## Version History:
+
+* 1.0.0.4 - Initial Release
