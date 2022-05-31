@@ -3,7 +3,7 @@
   <Manifest>
     <Identity>
       <ID>SCOM.Alert.Tasks</ID>
-      <Version>1.0.0.3</Version>
+      <Version>1.0.0.5</Version>
     </Identity>
     <Name>SCOM.Alert.Tasks</Name>
     <References>
@@ -134,20 +134,33 @@ Function Set-Connect
 
 Function Set-Console
 {
-    $BufferSizeHeight = 3000
-
-    $NumberOfLines = ($Script:Output | Measure-Object –Line).Lines + 100
-
-    if ($NumberOfLines -gt $BufferSizeHeight)
-    {
-        $BufferSizeHeight = $NumberOfLines
-    }
+    $ActualBufferSizeHeight = $Host.ui.rawui.BufferSize.Height
+    $ActualBufferSizeWidth = $Host.ui.rawui.BufferSize.Width
 
     $MaxLineLenghtInOutput = ($Output -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
 
-    $Console = $Host.ui.rawui
-    #$CurrentWidth = $Console.BufferSize.Width
-    $Console.BufferSize = New-Object System.Management.Automation.Host.Size($MaxLineLenghtInOutput, $BufferSizeHeight)
+    if ($MaxLineLenghtInOutput -gt $ActualBufferSizeWidth)
+    {
+        $BufferSizeWidth = $MaxLineLenghtInOutput
+    }
+    else
+    {
+        $BufferSizeWidth = $ActualBufferSizeWidth
+    }
+
+
+    $NumberOfLines = ($Script:Output | Measure-Object –Line).Lines
+
+    if ($NumberOfLines -gt $ActualBufferSizeHeight)
+    {
+        $BufferSizeHeight = $NumberOfLines
+    }
+    else
+    {
+        $BufferSizeHeight = $ActualBufferSizeHeight
+    }
+
+    $Host.ui.rawui.BufferSize = New-Object System.Management.Automation.Host.Size($BufferSizeWidth, $BufferSizeHeight)
 }
 
 Function Get-MonitorRule
@@ -578,6 +591,36 @@ Function Main
     Write-Host $Script:Output
 }
 
+Function Set-Console
+{
+    $ActualBufferSizeHeight = $Host.ui.rawui.BufferSize.Height
+    $ActualBufferSizeWidth = $Host.ui.rawui.BufferSize.Width
+
+    $MaxLineLenghtInOutput = ($Output -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
+
+    if ($MaxLineLenghtInOutput -gt $ActualBufferSizeWidth)
+    {
+        $BufferSizeWidth = $MaxLineLenghtInOutput
+    }
+    else
+    {
+        $BufferSizeWidth = $ActualBufferSizeWidth
+    }
+
+
+    $NumberOfLines = ($Script:Output | Measure-Object –Line).Lines
+
+    if ($NumberOfLines -gt $ActualBufferSizeHeight)
+    {
+        $BufferSizeHeight = $NumberOfLines
+    }
+    else
+    {
+        $BufferSizeHeight = $ActualBufferSizeHeight
+    }
+
+    $Host.ui.rawui.BufferSize = New-Object System.Management.Automation.Host.Size($BufferSizeWidth, $BufferSizeHeight)
+}
 
 
 Function Set-Connect
@@ -586,22 +629,6 @@ Function Set-Connect
 
     $SdkServiceMachine=(Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Microsoft Operations Manager\3.0\User Settings').SDKServiceMachine
     New-SCOMManagementGroupConnection –ComputerName $SdkServiceMachine 
-}
-
-Function Set-Console
-{
-    $NumberOfLines = $Script:Output.Length - $Script:Output.Replace($Script:LineFeed.ToString(),'').Length + 1
-
-    $console = $host.ui.rawui
-    $currentWidth = $console.BufferSize.Width
-    $currentHeight = $console.BufferSize.Height
-
-    if ($NumberOfLines -gt $currentHeight)
-    {
-        $currentHeight = $NumberOfLines
-    }
-
-    $console.BufferSize = New-Object System.Management.Automation.Host.size($currentWidth, $currentHeight)
 }
 
 
@@ -730,10 +757,10 @@ Function Set-OverrideDefaultsOutput
     Param($OverrideDefaults)
 
 
-    $ListOutput += $OverrideDefaults | Format-List -Property @{name='ParameterName';expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName }}, `
+    $Output += $OverrideDefaults | Format-List -Property @{name='ParameterName';expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName }}, `
                  ParameterType, @{name='Description';expression={'{0}' -f $_.ParameterDescription }}, 'DefaultValue', 'Options' | Out-String
 
-    return Format-Output -HeaderLine 'Default Values of the Overrides' -ListOutput $ListOutput
+    return Format-Output -HeaderLine 'Default Values of the Overrides' -Output $Output
 
 }
 
@@ -838,7 +865,7 @@ Function Set-CurrentOverridesOutput
         if ($Type -eq 'Object')
         {
 
-            $ListOutput += ($ArrayList | Sort-Object -Property 'ParameterName', TargetFullName | ` 
+            $Output += ($ArrayList | Sort-Object -Property 'ParameterName', TargetFullName | ` 
                                         Format-List -GroupBy @{name='ParameterName'; expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName}} `
                                              -Property `
                                                          @{name=$Type;expression={'{0} ({1})' -f $_.TargetFullName, $_.TargetDisplayName}}, ` 
@@ -849,7 +876,7 @@ Function Set-CurrentOverridesOutput
         else
         {
 
-            $ListOutput += ($ArrayList | Sort-Object -Property 'ParameterName' |  Format-List  `
+            $Output += ($ArrayList | Sort-Object -Property 'ParameterName' |  Format-List  `
                                    -GroupBy @{name='ParameterName'; expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName}} `
                                    -Property `
                                    @{name=$Type;expression={'{0} ({1})' -f $_.ClassName, $_.ClassDisplayName }}, `
@@ -861,22 +888,22 @@ Function Set-CurrentOverridesOutput
     }
     else
     {
-        $ListOutput += $Script:LineFeed + 'Not found'  + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
+        $Output += $Script:LineFeed + 'Not found'  + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
     }
 
 
-    return Format-Output -HeaderLine ('Current Overrides for {0}' -f $Type) -ListOutput $ListOutput
+    return Format-Output -HeaderLine ('Current Overrides for {0}' -f $Type) -Output $Output
 }
 
 Function Format-Output
 {
-    Param($HeaderLine, $ListOutput)
+    Param($HeaderLine, $Output)
 
-    $MaxLineLenghtInListOutput = ($ListOutput -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
+    $MaxLineLenghtInOutput = ($Output -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
 
-    if ($MaxLineLenghtInListOutput -gt $HeaderLine.Length)
+    if ($MaxLineLenghtInOutput -gt $HeaderLine.Length)
     {
-        $PadCount = $MaxLineLenghtInListOutput
+        $PadCount = $MaxLineLenghtInOutput
     }
     else
     {
@@ -887,7 +914,7 @@ Function Format-Output
     $HeaderOutput += $HeaderLine  + $Script:LineFeed
     $HeaderOutput += ''.PadRight($PadCount,'-')
 
-    return $HeaderOutput + $ListOutput
+    return $HeaderOutput + $Output
 
 }
 
@@ -1334,7 +1361,8 @@ Function Main
 
     $Class = $MonitorRule.Target.Id | Get-SCOMClass
 
-    $Script:Output += $($Class | Get-SCOMClassInstance | Sort-Object -Property FullName | Select-Object -Property FullName | Format-Table -HideTableHeaders | Out-String -Width 4096)
+    $Script:Output += $($Class | Get-SCOMClassInstance | Sort-Object -Property FullName | Select-Object -Property FullName, DisplayName |  `
+                                 Format-Table -Property @{name='Name';expression={'{0} ({1})' -f $_.FullName, $_.DisplayName}} -HideTableHeaders -AutoSize | Out-String)
 
     Clear-Host
 
@@ -1355,18 +1383,33 @@ Function Set-Connect
 
 Function Set-Console
 {
-    $NumberOfLines = $Script:Output.Length - $Script:Output.Replace($Script:LineFeed.ToString(),'').Length + 1
+    $ActualBufferSizeHeight = $Host.ui.rawui.BufferSize.Height
+    $ActualBufferSizeWidth = $Host.ui.rawui.BufferSize.Width
 
-    $console = $host.ui.rawui
-    $currentWidth = $console.BufferSize.Width
-    $currentHeight = $console.BufferSize.Height
+    $MaxLineLenghtInOutput = ($Output -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
 
-    if ($NumberOfLines -gt $currentHeight)
+    if ($MaxLineLenghtInOutput -gt $ActualBufferSizeWidth)
     {
-        $currentHeight = $NumberOfLines
+        $BufferSizeWidth = $MaxLineLenghtInOutput
+    }
+    else
+    {
+        $BufferSizeWidth = $ActualBufferSizeWidth
     }
 
-    $console.BufferSize = New-Object System.Management.Automation.Host.size($currentWidth, $currentHeight)
+
+    $NumberOfLines = ($Script:Output | Measure-Object –Line).Lines
+
+    if ($NumberOfLines -gt $ActualBufferSizeHeight)
+    {
+        $BufferSizeHeight = $NumberOfLines
+    }
+    else
+    {
+        $BufferSizeHeight = $ActualBufferSizeHeight
+    }
+
+    $Host.ui.rawui.BufferSize = New-Object System.Management.Automation.Host.Size($BufferSizeWidth, $BufferSizeHeight)
 }
 
 
