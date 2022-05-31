@@ -1,0 +1,1457 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ManagementPack SchemaVersion="2.0" ContentReadable="true" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Manifest>
+    <Identity>
+      <ID>SCOM.Alert.Tasks</ID>
+      <Version>1.0.0.3</Version>
+    </Identity>
+    <Name>SCOM.Alert.Tasks</Name>
+    <References>
+      <Reference Alias="System">
+        <ID>System.Library</ID>
+        <Version>7.5.8501.0</Version>
+        <PublicKeyToken>31bf3856ad364e35</PublicKeyToken>
+      </Reference>
+    </References>
+  </Manifest>
+  <Categories>
+    <Category ID="SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask.Category" Target="SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask" Value="System!System.Internal.ManagementPack.ConsoleTasks.Alert" />
+    <Category ID="SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask.Category" Target="SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask" Value="System!System.Internal.ManagementPack.ConsoleTasks.Alert" />
+    <Category ID="SCOM.Alert.Tasks.GetOverrides.ConsoleTask.Category" Target="SCOM.Alert.Tasks.GetOverrides.ConsoleTask" Value="System!System.Internal.ManagementPack.ConsoleTasks.Alert" />
+    <Category ID="SCOM.Alert.Tasks.GetTagets.ConsoleTask.Category" Target="SCOM.Alert.Tasks.GetTagets.ConsoleTask" Value="System!System.Internal.ManagementPack.ConsoleTasks.Alert" />
+  </Categories>
+  <Presentation>
+    <ConsoleTasks>
+      <ConsoleTask ID="SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask" Accessibility="Public" Enabled="true" Target="System!System.Entity" RequireOutput="false">
+        <Assembly>Res.SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask.Assembly</Assembly>
+        <Handler>ShellHandler</Handler>
+        <Parameters>
+          <Argument Name="WorkingDirectory" />
+          <Argument Name="Application">powershell.exe</Argument>
+          <Argument>-Noprofile -Noexit -WindowStyle Maximized -Command "&amp; { <![CDATA[Param([string] $AlertId)
+
+$Script:LineFeed = [char][byte]10
+Write-Host ($Script:LineFeed + 'Please wait. It might take a while ...')
+
+$SdkServiceMachine=(Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Microsoft Operations Manager\3.0\User Settings').SDKServiceMachine
+
+Import-Module OperationsManager
+New-SCOMManagementGroupConnection –ComputerName $SdkServiceMachine
+$Alert = Get-ScomAlert -id $AlertId 
+
+
+if ($Alert.IsMonitorAlert -eq $False)
+{
+    $IsMonitor = $False
+    $MonitorRule = Get-SCOMRule -id $Alert.MonitoringRuleId
+}
+else
+{
+    $IsMonitor = $True
+    $MonitorRule = get-SCOMMonitor -id $Alert.MonitoringRuleId
+}
+
+
+$Class = $MonitorRule.Target.Id | Get-SCOMClass
+
+Clear-Host
+
+Write-Host $Script:LineFeed
+
+Write-Host  "$($MonitorRule.XmlTag.Replace('Monitor',' Monitor')) name: $($MonitorRule.Name) `($($MonitorRule.DisplayName)`)"
+
+Write-Host $Script:LineFeed
+
+Write-Host "$($MonitorRule.XmlTag.Replace('Monitor',' Monitor')) is defined in this management pack: $($MonitorRule.GetManagementPack().Name) `($($monitorRule.GetManagementPack().DisplayName)`)"
+
+Write-Host $Script:LineFeed
+
+Write-Host "Target class name: $($Class.Name) `($($Class.DisplayName)`)"
+
+Write-Host $Script:LineFeed
+
+Write-Host '---------------------------------------------------------------------------'
+Write-Host 'Alert Details'
+Write-Host '---------------------------------------------------------------------------'
+
+$Alert | fl
+
+
+]]> }"</Argument>
+          <Argument>$Id$</Argument>
+        </Parameters>
+      </ConsoleTask>
+      <ConsoleTask ID="SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask" Accessibility="Public" Enabled="true" Target="System!System.Entity" RequireOutput="false">
+        <Assembly>Res.SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask.Assembly</Assembly>
+        <Handler>ShellHandler</Handler>
+        <Parameters>
+          <Argument Name="WorkingDirectory" />
+          <Argument Name="Application">powershell.exe</Argument>
+          <Argument>-Noprofile -Noexit -WindowStyle Maximized -Command "&amp; { <![CDATA[Param([string] $AlertId)
+
+$Script:LineFeed = [char][byte]10
+Write-Host ($Script:LineFeed + 'Please wait. It might take a while ...')
+
+$Script:Output = ''
+
+
+Function Main
+{
+    $ManagementGroup = Set-Connect
+
+    $MonitorRule = Get-MonitorRule $AlertId
+
+    $Targets = Get-Target -MonitorRule $MonitorRule
+
+    $Script:Output += Get-Header -MonitorRule $MonitorRule
+
+    if ($MonitorRule.XmlTag -ieq 'Rule')
+    {
+        $ArrayListDefaults = Get-OverrideableParametersDefaultsForRule -MonitorRule $MonitorRule
+    }
+    else
+    {
+        $ArrayListDefaults = Get-OverrideableParametersDefaultsForMonitor -MonitorRule $MonitorRule
+    }
+
+    $Script:Output += Get-EffectiveSettingsOutput -MonitorRule $MonitorRule -Targets $Targets -ArrayListDefaults $ArrayListDefaults
+
+    Clear-Host
+
+    Set-Console
+    
+    Write-Host $Script:Output
+}
+
+Function Set-Connect
+{
+    Import-Module operationsmanager
+
+    $SdkServiceMachine = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Microsoft Operations Manager\3.0\User Settings').SDKServiceMachine
+    New-SCOMManagementGroupConnection –ComputerName $SdkServiceMachine 
+    return (Get-SCOMManagementGroup -ComputerName $SdkServiceMachine)
+}
+
+Function Set-Console
+{
+    $BufferSizeHeight = 3000
+
+    $NumberOfLines = ($Script:Output | Measure-Object –Line).Lines + 100
+
+    if ($NumberOfLines -gt $BufferSizeHeight)
+    {
+        $BufferSizeHeight = $NumberOfLines
+    }
+
+    $MaxLineLenghtInOutput = ($Output -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
+
+    $Console = $Host.ui.rawui
+    #$CurrentWidth = $Console.BufferSize.Width
+    $Console.BufferSize = New-Object System.Management.Automation.Host.Size($MaxLineLenghtInOutput, $BufferSizeHeight)
+}
+
+Function Get-MonitorRule
+{
+    Param([string] $AlertId)
+
+    $Alert = Get-ScomAlert -id $AlertId 
+
+    if ($Alert.IsMonitorAlert -eq $False)
+    {
+        Return Get-SCOMRule -id $Alert.MonitoringRuleId
+    }
+    else
+    {
+        Return Get-SCOMMonitor -id $Alert.MonitoringRuleId
+    }
+}
+
+Function Get-MonitorRuleEnabledValue
+{
+    Param($Enabled) 
+
+    if ($Enabled.value__ -gt 0)
+    {
+        return 'true'
+    }
+    else
+    {
+        return 'false'
+    }
+}
+
+
+Function Get-Target
+{
+    Param($MonitorRule)
+
+    $Class = $MonitorRule.Target.Id | Get-SCOMClass
+
+    return ($Class | Get-SCOMClassInstance | Sort-Object -Property FullName)
+
+}
+
+Function Get-Header
+{
+    Param($MonitorRule)
+
+    [string]$Output = ''
+
+    $Output += $Script:LineFeed
+
+    $Output += ('{0} Name: {1} ({2})' -f $MonitorRule.XmlTag.Replace('Monitor',' Monitor'), $MonitorRule.Name, $MonitorRule.DisplayName) + $Script:LineFeed + $Script:LineFeed
+
+    $Output += ('{0} is defined in this management pack: {1} ({2})' -f $MonitorRule.XmlTag.Replace('Monitor',' Monitor'), $MonitorRule.getmanagementpack().Name, $MonitorRule.getmanagementpack().DisplayName) + $Script:LineFeed + $Script:LineFeed
+
+    $Output += ('Target Class Name: {0} ({1})' -f (($MonitorRule.Target.Id | Get-SCOMClass).Name), (($MonitorRule.Target.Id | Get-SCOMClass).DisplayName) ) + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
+    
+    return $Output
+}
+
+
+Function Format-Output
+{
+    Param($HeaderLine, $Output)
+
+    $MaxLineLenghtInOutput = ($Output -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
+
+    if ($MaxLineLenghtInOutput -gt $HeaderLine.Length)
+    {
+        $PadCount = $MaxLineLenghtInOutput
+    }
+    else
+    {
+        $PadCount = $HeaderLine.Length
+    }
+
+    $HeaderOutput = ''.PadRight($PadCount,'-')  + $Script:LineFeed
+    $HeaderOutput += $HeaderLine  + $Script:LineFeed
+    $HeaderOutput += ''.PadRight($PadCount,'-') + $Script:LineFeed + $Script:LineFeed
+
+    return $HeaderOutput + $Output
+
+}
+
+
+Function Get-OverrideableParametersDefaultsForRule
+{
+    Param($MonitorRule)
+
+    [string]$Output = ''
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+
+    $Object = New-Object -TypeName PSObject
+    $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'Enabled'
+    $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $(Get-MonitorRuleEnabledValue -Enabled $MonitorRule.Enabled)
+    $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True|False'
+
+    $ArrayList += $Object
+
+    $OverridableParametersByModule = $MonitorRule.GetOverrideableParametersByModule()
+
+    foreach($Module in $OverridableParametersByModule.GetEnumerator())
+    {
+        if ($Module.Value.Count -gt 0)
+        {
+            $XmlConfiguration = New-Object -Type System.Xml.XmlDocument
+
+            $XmlString = '<Configuration>$({0})</Configuration>' -f $Module.Key.Configuration
+
+            $XmlConfiguration.LoadXml($XmlString)
+
+
+            if($XmlConfiguration.Configuration.HasChildNodes -eq $true)
+            {
+
+                foreach ($Parameter in $Module.Value)
+                {
+                    foreach($ConfigurationParamemetr in $XmlConfiguration.Configuration.GetEnumerator())
+                    {
+                        if ($Parameter.Name -ieq $ConfigurationParamemetr.Name)
+                        {
+                            $Object = New-Object -TypeName PSObject
+                            $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value $ConfigurationParamemetr.Name
+                            $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($ConfigurationParamemetr.InnerText.ToString().Replace('Error','Critical').Replace('Normal','Medium'))
+
+                            if ($ConfigurationParamemetr.Name -ieq 'Priority')
+                            {
+                                $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value '0=Low|1=Medium|2=High'
+                            }
+
+                            if ($ConfigurationParamemetr.Name -ieq 'Severity')
+                            {
+                                $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value '0=Information|1=Warning|2=Critical'
+                            }
+
+                            $ArrayList += $Object
+                        }
+                    }    
+                }
+            }
+        }
+    }
+
+    return $ArrayList
+}
+
+Function Get-OverrideableParametersDefaultsForMonitor
+{
+    Param($MonitorRule)
+
+    [string]$Output = ''
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+
+    if ($MonitorRule.XmlTag -ieq 'UnitMonitor' -or $MonitorRule.XmlTag -ieq 'AggregateMonitor' -or $MonitorRule.XmlTag -ieq 'DependencyMonitor')
+    {
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'Enabled'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $(Get-MonitorRuleEnabledValue -Enabled $MonitorRule.Enabled)
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True|False'
+
+        $ArrayList += $Object
+
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'AlertOnState'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($MonitorRule.AlertSettings.AlertOnState.ToString().Replace('Error','Critical'))
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'Critical|Warning'
+        $ArrayList += $Object
+
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'AlertPriority'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($MonitorRule.AlertSettings.AlertPriority.ToString().Replace('Normal','Medium'))
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'Low|Medium|High'
+        $ArrayList += $Object
+
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'AlertSeverity'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($MonitorRule.AlertSettings.AlertSeverity.ToString().Replace('Error','Critical'))
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'Critical|Warning|Information|MatchMonitorHealth'
+        $ArrayList += $Object
+
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'AutoResolve'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $MonitorRule.AlertSettings.AutoResolve
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True|False'
+        $ArrayList += $Object
+
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'GenerateAlert'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($MonitorRule.AlertSettings -ne $True)
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True|False'
+        $ArrayList += $Object
+
+    }
+
+    if ($MonitorRule.XmlTag -ieq 'AggregateMonitor')
+    {
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'Algorithm'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $MonitorRule.Algorithm
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'BestOf|WorstOf'
+        $ArrayList += $Object
+    }
+
+    if ($monitorRule.XmlTag -ieq 'DependencyMonitor')
+    {
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'Algorithm'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $MonitorRule.Algorithm
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'BestOf|WorstOf|Percentage'
+        $ArrayList += $Object
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'AlgorithmPercentage'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $MonitorRule.AlgorithmParameter
+        $ArrayList += $Object
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'IgnoreMemberUnavailable'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $MonitorRule.MemberUnavailable
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True|Warning|Critical'
+        $ArrayList += $Object
+
+        $Object = New-Object -TypeName PSObject
+        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value 'IgnoreMemberInMaintenance'
+        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $MonitorRule.MemberInMaintenance
+        $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True|Warning|Critical'
+        $ArrayList += $Object
+
+    }
+
+    $XmlConfiguration = New-Object -Type System.Xml.XmlDocument
+
+    $XmlString = '<Configuration>$({0})</Configuration>' -f $MonitorRule.Configuration
+
+    $XmlConfiguration.LoadXml($XmlString)
+
+    if($XmlConfiguration.Configuration.HasChildNodes -eq $True)
+    {
+
+        $OverrideableParameters = $MonitorRule.GetOverrideableParameters() | Select-Object -Property Name
+
+        foreach($ConfigurationParamemetr in $XmlConfiguration.Configuration.GetEnumerator())
+        {
+            foreach($OverrideableParameter in $OverrideableParameters)
+            {
+                if ($OverrideableParameter.Name -ieq $ConfigurationParamemetr.Name)
+                {
+                        $Object = New-Object -TypeName PSObject
+                        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value $ConfigurationParamemetr.Name
+                        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($ConfigurationParamemetr.InnerText.ToString().Replace('Error','Critical').Replace('Normal','Medium'))
+
+                        $ArrayList += $Object
+                }
+            }
+        }    
+    }
+
+    return $ArrayList
+}
+
+
+Function Get-EffectiveSettingsOutput
+{
+    Param($MonitorRule, $Targets, $ArrayListDefaults)
+
+    [string]$Output = ''
+    $EffectiveSettingsFound = $false
+    $ArrayEffectiveSettings =  @{}
+
+    #$Output += '------------------------------'  + $Script:LineFeed
+    #$Output += 'Effective Settings for Targets'  + $Script:LineFeed
+    #$Output += '------------------------------'  + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
+
+    foreach ($Target in $Targets)
+    {
+        #$arrParameters = @()
+        $ArrayListParameters = New-Object -TypeName 'System.Collections.ArrayList'
+
+	    $Result = $ManagementGroup.Overrides.GetResultantOverrides($Target, $MonitorRule)
+
+	    if ($Result.ResultantPropertyOverrides.Count -gt 0 -or $Result.ResultantConfigurationOverrides.Count -gt 0 )
+	    {
+		    $EffectiveSettingFound = $true
+            
+		    if ($Result.ResultantPropertyOverrides.Count -gt 0)
+		    {
+                foreach($PropertyOverride in $Result.ResultantPropertyOverrides.GetEnumerator())
+                {
+
+                    if ($PropertyOverride.Value.EffectiveOverride.XmlTag -ilike '*PropertyOverride')
+                    {
+                        $Object = New-Object -TypeName PSObject
+
+                        $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value $PropertyOverride.Key
+                        $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($PropertyOverride.Value.EffectiveValue.ToString().Replace('Error','Critical').Replace('Normal','Medium'))
+                        $Object | Add-Member -Name 'Enforced' -MemberType Noteproperty -Value $PropertyOverride.Value.EffectiveOverride.Enforced
+                        $Object | Add-Member -Name 'Decription' -MemberType Noteproperty -Value $PropertyOverride.Value.EffectiveOverride.Description
+                        $Object | Add-Member -Name 'LastModified' -MemberType Noteproperty -Value $PropertyOverride.Value.EffectiveOverride.LastModified
+                        $Object | Add-Member -Name 'Overriden' -MemberType Noteproperty -Value 'Yes'
+
+                        $ArrayListParameters += $Object
+                    }
+
+                }
+		    }
+
+		    if ($Result.ResultantConfigurationOverrides.Count -gt 0)
+		    {
+                foreach($ConfigurationOverride in $Result.ResultantConfigurationOverrides.GetEnumerator())
+                {
+
+                    $Object = New-Object -TypeName PSObject
+
+                    $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value $ConfigurationOverride.Key
+                    $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($ConfigurationOverride.Value.EffectiveValue.ToString().Replace('Error','Critical').Replace('Normal','Medium'))
+                    $Object | Add-Member -Name 'Enforced' -MemberType Noteproperty -Value $ConfigurationOverride.Value.EffectiveOverride.Enforced
+                    $Object | Add-Member -Name 'Decription' -MemberType Noteproperty -Value $ConfigurationOverride.Value.EffectiveOverride.Description
+                    $Object | Add-Member -Name 'LastModified' -MemberType Noteproperty -Value $ConfigurationOverride.Value.EffectiveOverride.LastModified
+                    $Object | Add-Member -Name 'Overriden' -MemberType Noteproperty -Value 'Yes'
+
+                    $ArrayListParameters += $Object
+
+                }
+		    }
+
+	    }
+
+        foreach ($Default in $ArrayListDefaults.GetEnumerator())
+        {
+            $Found = $false
+
+            foreach($Parameter in $ArrayListParameters)
+            {
+                if ($Default.Parameter.ToString().Trim() -ieq $Parameter.Parameter.ToString().Trim())
+                {
+                    $Found = $true
+                    break
+                }
+            }
+
+            if ($Found -eq $false)
+            {
+                $Object = New-Object -TypeName PSObject
+
+                $Object | Add-Member -Name 'Parameter' -MemberType Noteproperty -Value $Default.Parameter
+                $Object | Add-Member -Name 'Value' -MemberType Noteproperty -Value $($Default.Value.ToString().Replace('Error','Critical').Replace('Normal','Medium'))
+                $Object | Add-Member -Name 'Overriden' -MemberType Noteproperty -Value 'No'
+
+
+                $ArrayListParameters += $Object
+            }
+        }
+
+        $ArrayEffectiveSettings.Add(('{0} ({1})' -f $Target.FullName, $Target.DisplayName), $ArrayListParameters)
+    }
+
+
+    foreach ($Setting in $ArrayEffectiveSettings.GetEnumerator() | Sort Name)
+    {
+        $Output += ('Target: {0}' -f $Setting.Key) + $Script:LineFeed
+        $Output += ($Setting.Value | Sort-Object -Property Parameter | Format-Table -AutoSize | Out-String -Width 4096)
+    }
+
+
+    if ($EffectiveSettingFound -eq $false)
+    {
+	    $Output += 'No override settings found for targets.'
+    }
+
+    return Format-Output -HeaderLine 'Effective Settings for Targets' -Output $Output
+    
+}
+
+Main
+
+
+
+
+]]> }"</Argument>
+          <Argument>$Id$</Argument>
+        </Parameters>
+      </ConsoleTask>
+      <ConsoleTask ID="SCOM.Alert.Tasks.GetOverrides.ConsoleTask" Accessibility="Public" Enabled="true" Target="System!System.Entity" RequireOutput="false">
+        <Assembly>Res.SCOM.Alert.Tasks.GetOverrides.ConsoleTask.Assembly</Assembly>
+        <Handler>ShellHandler</Handler>
+        <Parameters>
+          <Argument Name="WorkingDirectory" />
+          <Argument Name="Application">powershell.exe</Argument>
+          <Argument>-Noprofile -Noexit -WindowStyle Maximized -Command "&amp; { <![CDATA[Param([string] $AlertId)
+
+$Script:LineFeed = [char][byte]10 
+Write-Host ($Script:LineFeed + 'Please wait. It might take a while ...')
+
+[string]$Script:Output = ''
+
+Function Main
+{
+    Set-Connect
+
+    $MonitorRule = Get-MonitorRule $AlertId
+
+    $Script:Output += Get-Header -MonitorRule $MonitorRule
+
+    $OverrideDefaults = Get-OverrideDefaults -MonitorRule $MonitorRule
+
+    $Script:Output += Set-OverrideDefaultsOutput -OverrideDefaults $OverrideDefaults
+
+    $CurrentOverrides = Get-CurrentOverrides -MonitorRule $MonitorRule -OverrideDefaults $OverrideDefaults
+
+    $Script:Output += Set-CurrentOverridesOutput $CurrentOverrides -Type 'Class'
+
+    $Script:Output += Set-CurrentOverridesOutput $CurrentOverrides -Type 'Group'
+
+    $Script:Output += Set-CurrentOverridesOutput $CurrentOverrides -Type 'Object'
+
+    Clear-Host
+
+    Set-Console
+
+    Write-Host $Script:Output
+}
+
+
+
+Function Set-Connect
+{
+    Import-Module operationsmanager
+
+    $SdkServiceMachine=(Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Microsoft Operations Manager\3.0\User Settings').SDKServiceMachine
+    New-SCOMManagementGroupConnection –ComputerName $SdkServiceMachine 
+}
+
+Function Set-Console
+{
+    $NumberOfLines = $Script:Output.Length - $Script:Output.Replace($Script:LineFeed.ToString(),'').Length + 1
+
+    $console = $host.ui.rawui
+    $currentWidth = $console.BufferSize.Width
+    $currentHeight = $console.BufferSize.Height
+
+    if ($NumberOfLines -gt $currentHeight)
+    {
+        $currentHeight = $NumberOfLines
+    }
+
+    $console.BufferSize = New-Object System.Management.Automation.Host.size($currentWidth, $currentHeight)
+}
+
+
+Function Get-MonitorRule
+{
+    Param([string] $AlertId)
+
+    $Alert = Get-ScomAlert -id $AlertId 
+
+    if ($Alert.IsMonitorAlert -eq $False)
+    {
+        Return Get-SCOMRule -id $Alert.MonitoringRuleId
+    }
+    else
+    {
+        Return Get-SCOMMonitor -id $Alert.MonitoringRuleId
+    }
+}
+
+Function Get-MonitorRuleEnabledValue
+{
+    Param($Enabled) 
+
+    if ($Enabled.value__ -gt 0)
+    {
+        return 'true'
+    }
+    else
+    {
+        return 'false'
+    }
+}
+
+Function Get-Header
+{
+    Param($MonitorRule)
+
+    [string]$Output = ''
+
+    $Class = $MonitorRule.Target.Id | Get-SCOMClass
+
+    $Output += $Script:LineFeed
+
+    $Output += ('{0} Name: {1} ({2})' -f $MonitorRule.XmlTag.Replace('Monitor',' Monitor'), $MonitorRule.Name, $MonitorRule.DisplayName) + $Script:LineFeed + $Script:LineFeed
+
+
+    $Output += ('{0} is defined in this management pack: {1} ({2})' -f $MonitorRule.XmlTag.Replace('Monitor',' Monitor'), $MonitorRule.getmanagementpack().Name, $MonitorRule.getmanagementpack().DisplayName) + $Script:LineFeed + $Script:LineFeed
+
+
+    $Output += ('Target Class Name: {0} ({1})' -f $Class.Name, $Class.DisplayName) + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
+
+    return $Output
+}
+
+
+Function Get-ParameterDefaultValue
+{
+    Param($ParameterName, $OverrideDefaults)
+
+        foreach($OverrideDefault in $OverrideDefaults)
+        {
+            if ($ParameterName -ieq $OverrideDefault.ParameterName)
+            {
+                return $OverrideDefault.DefaultValue
+            }
+        }    
+
+    return $null
+
+}
+
+
+Function Get-ParameterDisplayName
+{
+    Param($ParameterName, $OverrideDefaults)
+
+        foreach($OverrideDefault in $OverrideDefaults)
+        {
+            if ($ParameterName -ieq $OverrideDefault.ParameterName)
+            {
+                return $OverrideDefault.ParameterDisplayName
+            }
+        }    
+
+    return $null
+}
+
+Function Get-ParameterType
+{
+    Param($ParameterName, $OverrideDefaults)
+
+        foreach($OverrideDefault in $OverrideDefaults)
+        {
+            if ($ParameterName -ieq $OverrideDefault.ParameterName)
+            {
+                return $OverrideDefault.ParameterType
+            }
+        }    
+
+    return $null
+}
+
+Function Get-OverrideDefaults
+{
+    Param($MonitorRule) 
+
+    if ($MonitorRule.XmlTag -ieq 'Rule')
+    {
+        $OverridePropertyDefaults = Get-RulePropertyDefaults -MonitorRule $MonitorRule
+        $OverrideConfigurationDefaults = Get-RuleConfigurationDefaults -MonitorRule $MonitorRule
+
+    }
+    else
+    {
+        $OverridePropertyDefaults = Get-MonitorPropertyDefaults -MonitorRule $MonitorRule
+        $OverrideConfigurationDefaults = Get-MonitorConfigurationDefaults -MonitorRule $MonitorRule 
+    }
+
+    return (@($OverridePropertyDefaults) + @($OverrideConfigurationDefaults)) | Sort-Object -Property ParameterName
+
+}
+
+
+Function Set-OverrideDefaultsOutput
+{
+    Param($OverrideDefaults)
+
+
+    $ListOutput += $OverrideDefaults | Format-List -Property @{name='ParameterName';expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName }}, `
+                 ParameterType, @{name='Description';expression={'{0}' -f $_.ParameterDescription }}, 'DefaultValue', 'Options' | Out-String
+
+    return Format-Output -HeaderLine 'Default Values of the Overrides' -ListOutput $ListOutput
+
+}
+
+
+
+Function Get-CurrentOverrides
+{
+    Param($MonitorRule, $OverrideDefaults)
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+    
+    if ($MonitorRule.XmlTag -ieq 'Rule')
+    {
+        $Overrides = Get-SCOMOverride | where {($_.XmlTag -eq 'RulePropertyOverride' -or  $_.XmlTag -eq 'RuleConfigurationOverride') -and $_.Rule.Id -eq $MonitorRule.Id}
+    }
+    else
+    {
+        $Overrides = Get-SCOMOverride | where {($_.XmlTag -eq 'MonitorPropertyOverride' -or  $_.XmlTag -eq 'MonitorConfigurationOverride') -and $_.Monitor.Id -eq $MonitorRule.Id} 
+    }
+
+
+    if ($Overrides.Count -gt 0)
+    {
+
+        foreach($Override in $Overrides)
+        {
+
+            if ($Override.ContextInstance -eq $null)
+            {
+                if ((Get-SCOMGroup -Id $Override.Context.Id) -ne $null)
+                {
+                    $Type = 'Group'
+                }
+                else
+                {
+                    $Type = 'Class'
+                }
+
+            }
+            else
+            {
+                if ((Get-SCOMGroup -Id $Override.ContextInstance) -ne $null)
+                {
+                    $Type = 'Group'
+                }
+                else
+                {
+                    $Type = 'Object'
+                }
+            }
+
+            if ($Override.XmlTag -like '*Property*')
+            {
+                $ParameterName = $Override.Property
+            }
+            else
+            {
+                $ParameterName = $Override.Parameter
+            }
+
+            $Parameter = New-Object -TypeName PSObject
+            $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value $ParameterName
+            $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value $(Get-ParameterDisplayName -ParameterName $ParameterName -OverrideDefaults $OverrideDefaults)
+            $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value $(Get-ParameterType -ParameterName $ParameterName -OverrideDefaults $OverrideDefaults)
+            $Parameter | Add-Member -Name 'OverrideValue' -MemberType Noteproperty -Value $($Override.Value)
+            $Parameter | Add-Member -Name 'EffectiveValue' -MemberType Noteproperty -Value $(Get-ParameterEffectiveValue -Override $Override -MonitorRule $MonitorRule -ParameterName $ParameterName -Type $Type)
+            $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $(Get-ParameterDefaultValue -ParameterName $ParameterName -OverrideDefaults $OverrideDefaults)
+            $Parameter | Add-Member -Name 'Enforced' -MemberType Noteproperty -Value $($Override.Enforced.ToString().ToLower().Trim())
+            $Parameter | Add-Member -Name 'Description' -MemberType Noteproperty -Value $($Override.Description)
+            $Parameter | Add-Member -Name 'LastModified' -MemberType Noteproperty -Value $($Override.LastModified.ToLocalTime())
+            $Parameter | Add-Member -Name 'ClassName' -MemberType Noteproperty -Value $(($Override.Context.Id | Get-SCOMClass).Name)
+            $Parameter | Add-Member -Name 'ClassDisplayName' -MemberType Noteproperty -Value $(($Override.Context.Id | Get-SCOMClass).DisplayName)
+            $Parameter | Add-Member -Name 'MpName' -MemberType Noteproperty -Value $($Override.GetManagementPack().Name)
+            $Parameter | Add-Member -Name 'MpDisplayName' -MemberType Noteproperty -Value $($Override.GetManagementPack().DisplayName)
+            $Parameter | Add-Member -Name 'Type' -MemberType Noteproperty -Value $Type
+
+            if ($Override.ContextInstance -ne $null)
+            {
+                $Parameter | Add-Member -Name 'TargetFullName' -MemberType Noteproperty -Value $((Get-SCOMClassInstance -Id $Override.ContextInstance.Guid).FullName)
+                $Parameter | Add-Member -Name 'TargetDisplayName' -MemberType Noteproperty -Value $('{0}' -f (Get-SCOMClassInstance -Id $Override.ContextInstance.Guid).DisplayName)
+
+            }
+
+            $ArrayList += $Parameter
+        }
+    }
+
+    return $ArrayList
+
+}
+
+Function Set-CurrentOverridesOutput
+{
+    Param($CurrentOverrides, $Type)
+
+
+    $ArrayList = @($CurrentOverrides | where {$_.Type -ieq $Type})
+
+    if ($ArrayList.Count -gt 0)
+    {
+
+        if ($Type -eq 'Object')
+        {
+
+            $ListOutput += ($ArrayList | Sort-Object -Property 'ParameterName', TargetFullName | ` 
+                                        Format-List -GroupBy @{name='ParameterName'; expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName}} `
+                                             -Property `
+                                                         @{name=$Type;expression={'{0} ({1})' -f $_.TargetFullName, $_.TargetDisplayName}}, ` 
+                                                         'ParameterType', 'DefaultValue', 'OverrideValue', 'EffectiveValue', 'Enforced', 'Description', 'LastModified', 'Class', @{name='DefinedIn';expression={'{0} ({1})' -f $_.MpName, $_.MpDisplayName }} | `
+                                                 Out-String -Width 4096)
+
+        }
+        else
+        {
+
+            $ListOutput += ($ArrayList | Sort-Object -Property 'ParameterName' |  Format-List  `
+                                   -GroupBy @{name='ParameterName'; expression={'{0} ({1})' -f $_.ParameterName, $_.ParameterDisplayName}} `
+                                   -Property `
+                                   @{name=$Type;expression={'{0} ({1})' -f $_.ClassName, $_.ClassDisplayName }}, `
+                                    'ParameterType', 'DefaultValue', 'OverrideValue', 'EffectiveValue', 'Enforced', 'Description', 'LastModified', ` 
+                                   @{name='DefinedIn';expression={'{0} ({1})' -f $_.MpName, $_.MpDisplayName }} |  Out-String -Width 4096)
+        }
+
+
+    }
+    else
+    {
+        $ListOutput += $Script:LineFeed + 'Not found'  + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
+    }
+
+
+    return Format-Output -HeaderLine ('Current Overrides for {0}' -f $Type) -ListOutput $ListOutput
+}
+
+Function Format-Output
+{
+    Param($HeaderLine, $ListOutput)
+
+    $MaxLineLenghtInListOutput = ($ListOutput -split $Script:LineFeed.ToString() | Measure-Object -Maximum -Property Length).Maximum -1
+
+    if ($MaxLineLenghtInListOutput -gt $HeaderLine.Length)
+    {
+        $PadCount = $MaxLineLenghtInListOutput
+    }
+    else
+    {
+        $PadCount = $HeaderLine.Length
+    }
+
+    $HeaderOutput = ''.PadRight($PadCount,'-')  + $Script:LineFeed
+    $HeaderOutput += $HeaderLine  + $Script:LineFeed
+    $HeaderOutput += ''.PadRight($PadCount,'-')
+
+    return $HeaderOutput + $ListOutput
+
+}
+
+
+Function Get-ParameterEffectiveValue
+{
+    Param($Override, $MonitorRule, $ParameterName, $Type )
+
+    if ($MonitorRule.XmlTag -ieq 'Rule')
+    {
+        #for object
+        if ($Type -ieq 'Object')
+        {
+            $EffectiveValues = Get-SCOMOverrideResult -Instance $($Override.ContextInstance | Get-SCOMClassInstance) -Rule $MonitorRule
+        }
+        #for class or group
+        else
+        {
+            $EffectiveValues = Get-SCOMOverrideResult -Class $($Override.Context.Id | Get-SCOMClass) -Rule $MonitorRule
+
+        }
+    }
+    else
+    {
+        #for object
+        if ($Type -ieq 'Object')
+        {
+            $EffectiveValues = Get-SCOMOverrideResult -Instance $($Override.ContextInstance | Get-SCOMClassInstance) -Monitor $MonitorRule
+        }
+        #for class or group
+        else
+        {
+            $EffectiveValues = Get-SCOMOverrideResult -Class $($Override.Context.Id | Get-SCOMClass) -Monitor $MonitorRule
+
+        }
+    }
+
+
+    foreach ($EffectiveValue in $EffectiveValues)
+    {
+        if ($EffectiveValue.Override.Key.GetType().Name -ieq 'ManagementPackOverrideableParameter')
+        {
+
+            if($EffectiveValue.Override.Key.Name -ieq $ParameterName)
+            {
+                return $EffectiveValue.Override.Value.EffectiveValue
+            }
+        }
+        else
+        {
+            if($EffectiveValue.Override.Key -ieq $ParameterName)
+            {
+                return $EffectiveValue.Override.Value.EffectiveValue
+            }
+        }
+    }
+
+    return $null
+}
+
+
+
+Function Get-RulePropertyDefaults
+{
+    Param($MonitorRule)
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+    
+    $RuleProperty = New-Object -TypeName PSObject
+    $RuleProperty | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'Enabled'
+    $RuleProperty | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Enabled'
+    $RuleProperty | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'bool'
+    $RuleProperty | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $(Get-MonitorRuleEnabledValue -Enabled $MonitorRule.Enabled)
+    $RuleProperty | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'true | false'
+
+    $ArrayList += $RuleProperty
+
+    return $ArrayList
+}
+
+Function Get-RuleConfigurationDefaults
+{
+    Param($MonitorRule)
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+
+    $OverridableParametersByModule = $MonitorRule.GetOverrideableParametersByModule()
+
+    foreach($Module in $OverridableParametersByModule.GetEnumerator())
+    {
+        if ($Module.Value.Count -gt 0)
+        {
+            $XmlConfiguration = New-Object -Type System.Xml.XmlDocument
+
+            $XmlString = '<Config>{0}</Config>' -f $Module.Key.Configuration
+
+            $XmlConfiguration.LoadXml($XmlString)
+
+
+            if($XmlConfiguration.Config.HasChildNodes -eq $true)
+            {
+
+                foreach ($Parameter in $Module.Value)
+                {
+
+                    $Object = New-Object -TypeName PSObject
+                    $Object | Add-Member -Name 'ModuleName' -MemberType Noteproperty -Value $Module.Key.Name
+                    $Object | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value $Parameter.Name
+
+                    if ([String]::IsNullOrWhiteSpace($Parameter.DisplayName) -eq $true)
+                    {
+
+                        $Object | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value $Parameter.Name
+                    }
+                    else
+                    {
+                        $Object | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value $Parameter.DisplayName
+                    } 
+                       
+                    $Object | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value $Parameter.ParameterType
+
+                    $Object | Add-Member -Name 'ParameterDescription' -MemberType Noteproperty -Value $Parameter.Description
+
+                    $Selector = ('{0}{1}'  -f '/', $Parameter.Selector.Replace('$',''))
+
+                    $Object | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value ((Select-Xml -Content $XmlString -XPath $Selector).Node.InnerText)
+
+                    $Options = $null
+
+                    if ($Parameter.Name -ieq 'Priority')
+                    {
+                        $Options = '0 = Low | 1 = Medium | 2 = High'
+                    }
+
+
+                    if ($Parameter.Name -ieq 'Severity')
+                    {
+                        $Options = '0 = Information | 1 = Warning | 2 = Critical'
+                    }
+
+                    if ($Parameter.ParameterType.ToString().ToLower() -ieq 'bool')
+                    {
+                        $Options = 'true | false'
+                    }
+
+
+                    $Object | Add-Member -Name 'Options' -MemberType Noteproperty -Value $Options
+
+                    $ArrayList += $Object
+
+                }
+            }
+        }
+     }
+
+    return $ArrayList
+}
+
+
+
+Function Get-MonitorPropertyDefaults
+{
+    Param($MonitorRule)
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+
+    #Enabled
+
+    $Parameter = New-Object -TypeName PSObject
+    $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'Enabled'
+    $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Enabled'
+    $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'bool'
+    $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $(Get-MonitorRuleEnabledValue -Enabled $MonitorRule.Enabled)
+    $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'true | false'
+
+    $ArrayList += $Parameter
+
+    #GenerateAlert
+
+    if ($MonitorRule.AlertSettings -eq $null)
+    {
+        $GenerateAlert = $false
+    }
+    else
+    {
+        $GenerateAlert = $true
+    }
+
+
+    $Parameter = New-Object -TypeName PSObject
+    $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'GenerateAlert'
+    $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Generates Alert'
+    $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'bool'
+    $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value (&{If($GenerateAlert) {'true'} Else {'false'}})
+    $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'true | false'
+
+    $ArrayList += $Parameter
+
+    #AlertOnState
+
+    $Parameter = New-Object -TypeName PSObject
+    $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'AlertOnState'
+    $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Alert On State'
+    $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'bool'
+    $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value (&{If($GenerateAlert) {$($MonitorRule.AlertSettings.AlertOnState.ToString())} Else {'Error'}})            
+    $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'Error (The monitor is in a critical health state) | Warning (The monitor is in a critical or warning health state)'
+
+    $ArrayList += $Parameter
+
+    #AlertPriority
+
+    $Parameter = New-Object -TypeName PSObject
+    $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'AlertPriority'
+    $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Alert Priority'
+    $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'enumeration'
+    $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value (&{If($GenerateAlert) {$($MonitorRule.AlertSettings.AlertPriority.ToString())} Else {'Low'}})    
+    $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'High | Normal (Medium) | Low'
+
+    $ArrayList += $Parameter
+
+
+    #AlertSeverity
+
+    $Parameter = New-Object -TypeName PSObject
+    $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'AlertSeverity'
+    $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Alert Severity'
+    $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'enumeration'
+    $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value (&{If($GenerateAlert) {$($MonitorRule.AlertSettings.AlertSeverity.ToString())} Else {'Error'}})  
+    $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value ('Error (Critical) | Warning | Information | MatchMonitorHealth (Match monitor' + [char][byte]39 + 's health)')
+
+    $ArrayList += $Parameter
+
+    #AutoResolve
+
+    $Parameter = New-Object -TypeName PSObject
+    $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'AutoResolve'
+    $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Auto-Resolve Alert'
+    $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'bool'
+    $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value (&{If($GenerateAlert) {$MonitorRule.AlertSettings.AutoResolve.ToString().ToLower()} Else {'false'}}) 
+    $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'true | false'
+
+    $ArrayList += $Parameter
+
+
+    if ($MonitorRule.XmlTag -ieq 'AggregateMonitor')
+    {
+
+        #Algorithm
+
+        $Parameter = New-Object -TypeName PSObject
+        $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'Algorithm'
+        $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Rollup Algorithm'
+        $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'enumeration'
+        $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $MonitorRule.Algorithm.ToString()
+        $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'BestOf (Best health state of any member) | WorstOf (Worst health state of any member)'
+
+        $ArrayList += $Parameter
+    }
+
+
+    if ($MonitorRule.XmlTag -ieq 'DependencyMonitor')
+    {
+        #Algorithm
+
+        $Parameter = New-Object -TypeName PSObject
+        $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'Algorithm'
+        $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Rollup Algorithm'
+        $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'enumeration'
+        $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $MonitorRule.Algorithm.ToString()
+        $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'BestOf (Best health state of any member) | WorstOf (Worst health state of any member) | Percentage (Worst state of a percentage of members in good health state)'
+
+        $ArrayList += $Parameter
+
+
+        #AlgorithmPercentage
+
+        if ($MonitorRule.AlgorithmParameter -eq $null)
+        {
+            $AlgorithmPercentage = '0'
+        }
+        else
+        {
+            $AlgorithmPercentage = $MonitorRule.AlgorithmParameter
+        }
+
+
+        $Parameter = New-Object -TypeName PSObject
+        $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'AlgorithmPercentage'
+        $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Percentage'
+        $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'double'
+        $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $AlgorithmPercentage
+
+        $ArrayList += $Parameter
+
+        #IgnoreMemberUnavailable
+
+        if ($MonitorRule.MemberUnAvailable -eq $null)
+        {
+            $MemberUnAvailable = 'True'
+        }
+        else
+        {
+            $MemberUnAvailable = $MonitorRule.MemberUnAvailable
+        }
+
+
+        $Parameter = New-Object -TypeName PSObject
+        $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'IgnoreMemberUnavailable'
+        $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Monitoring unavailable'
+        $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'enumeration'
+        $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $MemberUnAvailable
+        $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True (Monitoring Unavailable) | Warning (Rollup monitoring unavailable as warning) | Error (Rollup monitoring unavailable as error)'
+
+        $ArrayList += $Parameter
+
+        #IgnoreMemberInMaintenance
+
+        if ($MonitorRule.MemberInMaintenance -eq $null)
+        {
+            $MemberInMaintenance = 'True'
+        }
+        else
+        {
+            $MemberInMaintenance = $MonitorRule.MemberInMaintenance
+        }
+
+
+        $Parameter = New-Object -TypeName PSObject
+        $Parameter | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value 'IgnoreMemberInMaintenance'
+        $Parameter | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value 'Maintenance mode'
+        $Parameter | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value 'enumeration'
+        $Parameter | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value $MemberInMaintenance
+        $Parameter | Add-Member -Name 'Options' -MemberType Noteproperty -Value 'True (Maintenance mode) | Warning (Rollup monitor in maintenance mode as warning) | Error (Rollup monitor in maintenance mode as error)'
+
+        $ArrayList += $Parameter
+
+    }
+
+
+    return $ArrayList
+
+}
+
+Function Get-MonitorConfigurationDefaults
+{
+    Param($MonitorRule)
+
+
+    $ArrayList = New-Object -TypeName 'System.Collections.ArrayList'
+
+    #UnitMonitor
+    if ($MonitorRule.XmlTag -ieq 'UnitMonitor')
+    {
+        if ($MonitorRule.Configuration -ne $null)
+        {
+        
+            $XmlConfiguration = New-Object -Type System.Xml.XmlDocument
+
+            $XmlString = '<Config>{0}</Config>' -f $MonitorRule.Configuration
+
+            $XmlConfiguration.LoadXml($XmlString)
+
+            $OverrideableConfigurationParameters = $MonitorRule.GetOverrideableParameters()
+
+            foreach($Parameter in $OverrideableConfigurationParameters.GetEnumerator())
+            {
+
+
+                    if($XmlConfiguration.Config.HasChildNodes -eq $true)
+                    {
+
+
+                            $Object = New-Object -TypeName PSObject
+                            $Object | Add-Member -Name 'ParameterName' -MemberType Noteproperty -Value $Parameter.Name
+
+                            if ([String]::IsNullOrWhiteSpace($Parameter.DisplayName) -eq $true)
+                            {
+
+                                $Object | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value $Parameter.Name
+                            }
+                            else
+                            {
+                                $Object | Add-Member -Name 'ParameterDisplayName' -MemberType Noteproperty -Value $Parameter.DisplayName
+                            } 
+                       
+                            $Object | Add-Member -Name 'ParameterType' -MemberType Noteproperty -Value $Parameter.ParameterType
+
+                            $Object | Add-Member -Name 'ParameterDescription' -MemberType Noteproperty -Value $Parameter.Description
+
+                            $Selector = ('{0}{1}'  -f '/', $Parameter.Selector.Replace('$',''))
+
+                            $Object | Add-Member -Name 'DefaultValue' -MemberType Noteproperty -Value ((Select-Xml -Content $XmlString -XPath $Selector).Node.InnerText)
+
+
+                            $ArrayList += $Object
+
+                    }
+                }
+         }
+
+     }
+
+
+    if ($ArrayList.Count -gt 0)
+    {
+        return ($ArrayList | Sort-Object -Property 'ParameterName')
+    }
+    else
+    {
+        return $null
+    }
+}
+
+
+
+Main
+
+
+
+]]> }"</Argument>
+          <Argument>$Id$</Argument>
+        </Parameters>
+      </ConsoleTask>
+      <ConsoleTask ID="SCOM.Alert.Tasks.GetTagets.ConsoleTask" Accessibility="Public" Enabled="true" Target="System!System.Entity" RequireOutput="false">
+        <Assembly>Res.SCOM.Alert.Tasks.GetTagets.ConsoleTask.Assembly</Assembly>
+        <Handler>ShellHandler</Handler>
+        <Parameters>
+          <Argument Name="WorkingDirectory" />
+          <Argument Name="Application">powershell.exe</Argument>
+          <Argument>-Noprofile -Noexit -WindowStyle Maximized -Command "&amp; { <![CDATA[Param([string] $AlertId)
+
+$Script:LineFeed = [char][byte]10 
+Write-Host ($Script:LineFeed + 'Please wait. It might take a while ...')
+
+[string]$Script:Output = ''
+
+Function Main
+{
+    Set-Connect
+
+    $MonitorRule = Get-MonitorRule $AlertId
+
+    $Script:Output += Get-Header -MonitorRule $MonitorRule
+
+    $Class = $MonitorRule.Target.Id | Get-SCOMClass
+
+    $Script:Output += $($Class | Get-SCOMClassInstance | Sort-Object -Property FullName | Select-Object -Property FullName | Format-Table -HideTableHeaders | Out-String -Width 4096)
+
+    Clear-Host
+
+    Set-Console
+
+    Write-Host $Script:Output
+}
+
+
+Function Set-Connect
+{
+    Import-Module operationsmanager
+
+    $SdkServiceMachine=(Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Microsoft Operations Manager\3.0\User Settings').SDKServiceMachine
+    New-SCOMManagementGroupConnection –ComputerName $SdkServiceMachine 
+}
+
+
+Function Set-Console
+{
+    $NumberOfLines = $Script:Output.Length - $Script:Output.Replace($Script:LineFeed.ToString(),'').Length + 1
+
+    $console = $host.ui.rawui
+    $currentWidth = $console.BufferSize.Width
+    $currentHeight = $console.BufferSize.Height
+
+    if ($NumberOfLines -gt $currentHeight)
+    {
+        $currentHeight = $NumberOfLines
+    }
+
+    $console.BufferSize = New-Object System.Management.Automation.Host.size($currentWidth, $currentHeight)
+}
+
+
+Function Get-MonitorRule
+{
+    Param([string] $AlertId)
+
+    $Alert = Get-ScomAlert -id $AlertId 
+
+    if ($Alert.IsMonitorAlert -eq $False)
+    {
+        Return Get-SCOMRule -id $Alert.MonitoringRuleId
+    }
+    else
+    {
+        Return Get-SCOMMonitor -id $Alert.MonitoringRuleId
+    }
+}
+
+
+Function Get-Header
+{
+    Param($MonitorRule)
+
+    [string]$Output = ''
+
+    $Class = $MonitorRule.Target.Id | Get-SCOMClass
+
+    $Output += $Script:LineFeed
+
+    $Output += ('{0} Name: {1} ({2})' -f $MonitorRule.XmlTag.Replace('Monitor',' Monitor'), $MonitorRule.Name, $MonitorRule.DisplayName) + $Script:LineFeed + $Script:LineFeed
+
+
+    $Output += ('{0} is defined in this management pack: {1} ({2})' -f $MonitorRule.XmlTag.Replace('Monitor',' Monitor'), $MonitorRule.getmanagementpack().Name, $MonitorRule.getmanagementpack().DisplayName) + $Script:LineFeed + $Script:LineFeed
+
+
+    $Output += ('Target Class Name: {0} ({1})' -f $Class.Name, $Class.DisplayName) + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed + $Script:LineFeed
+
+    $Output += '-------'  + $Script:LineFeed
+    $Output += 'Targets'  + $Script:LineFeed
+    $Output += '-------'  + $Script:LineFeed
+
+    return $Output
+}
+
+Main
+
+
+]]> }"</Argument>
+          <Argument>$Id$</Argument>
+        </Parameters>
+      </ConsoleTask>
+    </ConsoleTasks>
+  </Presentation>
+  <LanguagePacks>
+    <LanguagePack ID="ENU" IsDefault="true">
+      <DisplayStrings>
+        <DisplayString ElementID="SCOM.Alert.Tasks">
+          <Name>SCOM Alert Tasks</Name>
+          <Description></Description>
+        </DisplayString>
+        <DisplayString ElementID="SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask">
+          <Name>Get Alert Details</Name>
+          <Description></Description>
+        </DisplayString>
+        <DisplayString ElementID="SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask">
+          <Name>Get Effective Setting</Name>
+          <Description></Description>
+        </DisplayString>
+        <DisplayString ElementID="SCOM.Alert.Tasks.GetOverrides.ConsoleTask">
+          <Name>Get Overrides</Name>
+          <Description></Description>
+        </DisplayString>
+        <DisplayString ElementID="SCOM.Alert.Tasks.GetTagets.ConsoleTask">
+          <Name>Get Targets</Name>
+          <Description></Description>
+        </DisplayString>
+      </DisplayStrings>
+      <KnowledgeArticles></KnowledgeArticles>
+    </LanguagePack>
+  </LanguagePacks>
+  <Resources>
+    <Assembly ID="Res.SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask.Assembly" Accessibility="Public" FileName="Res.SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask.Assembly.File" HasNullStream="true" QualifiedName="Res.SCOM.Alert.Tasks.GetAlertDetails.ConsoleTask.Assembly" />
+    <Assembly ID="Res.SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask.Assembly" Accessibility="Public" FileName="Res.SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask.Assembly.File" HasNullStream="true" QualifiedName="Res.SCOM.Alert.Tasks.GetEffectiveSettings.ConsoleTask.Assembly" />
+    <Assembly ID="Res.SCOM.Alert.Tasks.GetOverrides.ConsoleTask.Assembly" Accessibility="Public" FileName="Res.SCOM.Alert.Tasks.GetOverrides.ConsoleTask.Assembly.File" HasNullStream="true" QualifiedName="Res.SCOM.Alert.Tasks.GetOverrides.ConsoleTask.Assembly" />
+    <Assembly ID="Res.SCOM.Alert.Tasks.GetTagets.ConsoleTask.Assembly" Accessibility="Public" FileName="Res.SCOM.Alert.Tasks.GetTagets.ConsoleTask.Assembly.File" HasNullStream="true" QualifiedName="Res.SCOM.Alert.Tasks.GetTagets.ConsoleTask.Assembly" />
+  </Resources>
+</ManagementPack>
