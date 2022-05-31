@@ -14,4 +14,4 @@ Many of my IT colleagues in our company use the SCOM console to work with alerts
 
 ## Version History:
 
-* 1.0.0.4 - Initial Release
+* 1.0.0.5 - Initial Release
