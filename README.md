@@ -12,6 +12,9 @@ Many of my IT colleagues in our company use the SCOM console to work with alerts
 
 * **Get Targets** - shows all targets for given monitor or rule
 
+## [Download Here](https://github.com/msalomoun/SCOM.Alert.Tasks/archive/main.zip)
+
 ## Version History:
 
 * 1.0.0.5 - Initial Release
+
